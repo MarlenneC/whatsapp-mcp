@@ -1,5 +1,8 @@
 from typing import List, Dict, Any, Optional
 from mcp.server.fastmcp import FastMCP
+import requests
+import mimetypes
+import os
 from whatsapp import (
     search_contacts as whatsapp_search_contacts,
     list_messages as whatsapp_list_messages,
@@ -14,6 +17,10 @@ from whatsapp import (
     send_audio_message as whatsapp_audio_voice_message,
     download_media as whatsapp_download_media
 )
+import requests
+
+# Configuración de Ollama
+OLLAMA_API_BASE = "http://192.168.2.177:11434/api"
 
 # Initialize FastMCP server
 mcp = FastMCP("whatsapp")
@@ -195,7 +202,11 @@ def send_file(recipient: str, media_path: str) -> Dict[str, Any]:
     Returns:
         A dictionary containing success status and a status message
     """
+      # Número fijo
+    #recipient = "5212228037800@s.whatsapp.net"
     
+    recipient = "5217641291840@s.whatsapp.net"
+    #recipient = "5212225585997@s.whatsapp.net"
     # Call the whatsapp_send_file function
     success, status_message = whatsapp_send_file(recipient, media_path)
     return {
@@ -245,7 +256,54 @@ def download_media(message_id: str, chat_jid: str) -> Dict[str, Any]:
             "success": False,
             "message": "Failed to download media"
         }
+    
+@mcp.tool()
+def generate_and_send(prompt: str) -> Dict[str, Any]:
+    """Genera un mensaje usando Ollama y lo envía por WhatsApp.
 
+    Args:
+        prompt: Texto con la instrucción a LLaMA para generar el mensaje.
+
+    Returns:
+        Diccionario con estado de generación y envío.
+    """
+    # Número fijo
+    recipient = "5212225585997@s.whatsapp.net"
+   # recipient = "5212231142839@s.whatsapp.net"
+
+    generated_message = query_ollama(prompt)
+
+    if not generated_message or "[Error]" in generated_message:
+        return {
+            "success": False,
+            "message": "Ocurrió un error al generar el mensaje.",
+            "generated_message": generated_message
+        }
+
+    success, status_message = whatsapp_send_message(recipient, generated_message)
+
+    return {
+        "success": success,
+        "message": status_message,
+        "generated_message": generated_message
+    }
+    
+def query_ollama(prompt: str, model: str = "llama3.2:3b") -> str:
+    """Consulta el modelo LLaMA 3.2 vía Ollama API local."""
+    try:
+        response = requests.post(f"{OLLAMA_API_BASE}/generate", json={
+            "model": model,
+            "prompt": prompt,
+            "stream": False
+        })
+        if response.status_code == 200:
+            return response.json().get("response", "").strip()
+        else:
+            return f"[Error] Ollama respondió con {response.status_code}: {response.text}"
+    except Exception as e:
+        return f"[Error] Fallo al conectar con Ollama: {e}"
+    
 if __name__ == "__main__":
     # Initialize and run the server
     mcp.run(transport='stdio')
+    print("[MCP] WhatsApp MCP server corriendo...")
